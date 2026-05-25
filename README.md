@@ -79,6 +79,22 @@ copy .env.example .env
 streamlit run app.py
 ```
 
+## Build Corpus
+
+Place source files into:
+
+- `data/pdfs/` for placement PDFs
+- `data/images/` for charts, screenshots, and image notices
+- `data/tables/` for CSV/XLSX placement tables
+
+Then run:
+
+```bash
+python -m scripts.ingest
+```
+
+This writes normalized source records to `data/extracted/corpus.jsonl`.
+
 ## Engineering Notes
 
 - The assistant should cite retrieved chunks instead of answering from memory.
@@ -87,4 +103,3 @@ streamlit run app.py
 - Unsupported live-data queries should be routed to tools or refused clearly.
 - Evaluation queries live in `evaluation/test_queries.py` and should be expanded
   whenever a new data modality is added.
-

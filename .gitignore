@@ -5,11 +5,12 @@ __pycache__/
 .streamlit/secrets.toml
 data/pdfs/*
 data/images/*
+data/tables/*
 data/extracted/*
 !data/pdfs/.gitkeep
 !data/images/.gitkeep
+!data/tables/.gitkeep
 !data/extracted/.gitkeep
 *.faiss
 *.pkl
 *.log
-
