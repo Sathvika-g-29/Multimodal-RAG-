@@ -95,6 +95,15 @@ python -m scripts.ingest
 
 This writes normalized source records to `data/extracted/corpus.jsonl`.
 
+For the official hackathon dataset, use the dataset-specific parser instead:
+
+```bash
+python -m scripts.parse_dataset --pdf C:\Users\SATHVIKA\Downloads\Placement_RAG_Dataset_Enhanced.pdf
+```
+
+This parser avoids embedding evaluation/adversarial questions and creates structured records for eligibility rows,
+hiring distribution, trend data, conflicting records, overall statistics, and interview experiences.
+
 ## Engineering Notes
 
 - The assistant should cite retrieved chunks instead of answering from memory.
