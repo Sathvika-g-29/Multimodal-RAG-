@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from retriever.reranker import rerank_by_keyword_overlap
+from retriever.metadata_filter import metadata_matches
 
 
 @dataclass(frozen=True)
@@ -18,14 +18,50 @@ class EvidenceChunk:
 
 
 def retrieve_context(request: RetrievalRequest) -> list[EvidenceChunk]:
-    """Temporary retrieval boundary until the FAISS index is wired in."""
-    _ = request.metadata
-    candidates = [
-        "No indexed placement corpus was found yet. Upload PDFs/images and run ingestion first."
+    from retriever.corpus_loader import load_corpus
+
+    corpus = load_corpus()
+    if not corpus:
+        return [
+            EvidenceChunk(
+                text="No indexed placement corpus was found yet. Run the dataset parser first.",
+                source="system",
+                metadata={"modality": "status"},
+            )
+        ]
+
+    filtered = [
+        chunk
+        for chunk in corpus
+        if metadata_matches(chunk.metadata, request.metadata)
     ]
-    reranked = rerank_by_keyword_overlap(request.query, candidates)[: request.top_k]
-    return [
-        EvidenceChunk(text=text, source="system", metadata={"modality": "status"})
-        for text in reranked
+    scored = [
+        (score_chunk(request.query, chunk), chunk)
+        for chunk in filtered
+    ]
+    ranked = [
+        chunk
+        for score, chunk in sorted(scored, key=lambda item: item[0], reverse=True)
+        if score > 0
     ]
 
+    return ranked[: request.top_k]
+
+
+def score_chunk(query: str, chunk: EvidenceChunk) -> int:
+    query_terms = tokenize(query)
+    chunk_terms = tokenize(chunk.text)
+    metadata_terms = tokenize(" ".join(str(value) for value in chunk.metadata.values()))
+
+    score = len(query_terms & chunk_terms) * 2
+    score += len(query_terms & metadata_terms)
+
+    if chunk.metadata.get("company") and str(chunk.metadata["company"]).casefold() in query.casefold():
+        score += 5
+
+    return score
+
+
+def tokenize(text: str) -> set[str]:
+    cleaned = "".join(character if character.isalnum() else " " for character in text.casefold())
+    return {token for token in cleaned.split() if len(token) > 1}
