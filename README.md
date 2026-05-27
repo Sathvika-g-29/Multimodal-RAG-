@@ -14,6 +14,7 @@ eligibility filtering, and graceful refusal for unsupported or out-of-scope prom
 - Chunking and cleaning utilities
 - FAISS-backed vector search
 - Metadata-aware retrieval and reranking hooks
+- Rule-based reasoning for filtering, sorting, trends, and conflicts
 - Streamlit chat interface
 - Evaluation query set for regression testing
 

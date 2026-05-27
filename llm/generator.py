@@ -2,6 +2,13 @@ from retriever.retriever import EvidenceChunk
 
 
 def generate_answer(query: str, evidence: list[EvidenceChunk]) -> str:
+    from reasoning.rule_engine import answer_with_rules
+    from retriever.corpus_loader import load_corpus
+
+    rule_answer = answer_with_rules(query, load_corpus())
+    if rule_answer:
+        return _format_answer(rule_answer.text, rule_answer.evidence)
+
     if not evidence:
         return "I do not have enough retrieved evidence to answer that reliably."
 
@@ -24,3 +31,14 @@ def generate_answer(query: str, evidence: list[EvidenceChunk]) -> str:
         "Retrieved evidence:\n"
         f"{evidence_text}"
     )
+
+
+def _format_answer(answer: str, evidence: list[EvidenceChunk]) -> str:
+    if not evidence:
+        return answer
+
+    evidence_text = "\n".join(
+        f"- {chunk.text} [{chunk.source}; section={chunk.metadata.get('section', 'unknown')}]"
+        for chunk in evidence[:5]
+    )
+    return f"{answer}\n\nEvidence:\n{evidence_text}"
