@@ -80,6 +80,8 @@ copy .env.example .env
 streamlit run app.py
 ```
 
+The UI shows corpus/index status, official evaluation prompts, retrieval controls, and expandable evidence for each answer.
+
 ## Build Corpus
 
 Place source files into:
