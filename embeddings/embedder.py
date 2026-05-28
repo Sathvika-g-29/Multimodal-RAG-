@@ -13,6 +13,7 @@ DEFAULT_CACHE_DIR = "data/extracted/model_cache"
 def get_embedding_model(model_name: str = DEFAULT_MODEL) -> SentenceTransformer:
     cache_dir = Path(os.getenv("MODEL_CACHE_DIR", DEFAULT_CACHE_DIR))
     cache_dir.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
     return SentenceTransformer(model_name, cache_folder=str(cache_dir))
 
 

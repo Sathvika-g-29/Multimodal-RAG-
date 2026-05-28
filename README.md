@@ -115,6 +115,16 @@ python -m scripts.build_index
 
 This creates generated files under `data/extracted/` and retrieval will use semantic search when those files are present.
 
+## Evaluate
+
+Run the official 30-query evaluation set from the dataset:
+
+```bash
+python -m scripts.evaluate
+```
+
+The command writes `data/extracted/evaluation_report.json` with answers, evidence sections, and a lightweight response classification.
+
 ## Engineering Notes
 
 - The assistant should cite retrieved chunks instead of answering from memory.
