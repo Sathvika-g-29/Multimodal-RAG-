@@ -19,6 +19,7 @@ class EvidenceChunk:
 
 def retrieve_context(request: RetrievalRequest) -> list[EvidenceChunk]:
     from retriever.corpus_loader import load_corpus
+    from retriever.semantic_retriever import retrieve_semantic_context
 
     corpus = load_corpus()
     if not corpus:
@@ -35,9 +36,21 @@ def retrieve_context(request: RetrievalRequest) -> list[EvidenceChunk]:
         for chunk in corpus
         if metadata_matches(chunk.metadata, request.metadata)
     ]
+    keyword_results = retrieve_keyword_context(request, filtered)
+    semantic_results = retrieve_semantic_context(request)
+    if semantic_results:
+        return merge_results(semantic_results, keyword_results, request.top_k)
+
+    return keyword_results
+
+
+def retrieve_keyword_context(
+    request: RetrievalRequest,
+    corpus: list[EvidenceChunk],
+) -> list[EvidenceChunk]:
     scored = [
         (score_chunk(request.query, chunk), chunk)
-        for chunk in filtered
+        for chunk in corpus
     ]
     ranked = [
         chunk
@@ -46,6 +59,26 @@ def retrieve_context(request: RetrievalRequest) -> list[EvidenceChunk]:
     ]
 
     return ranked[: request.top_k]
+
+
+def merge_results(
+    primary: list[EvidenceChunk],
+    secondary: list[EvidenceChunk],
+    top_k: int,
+) -> list[EvidenceChunk]:
+    merged: list[EvidenceChunk] = []
+    seen: set[tuple[str, str]] = set()
+
+    for chunk in primary + secondary:
+        key = (chunk.source, chunk.text)
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(chunk)
+        if len(merged) >= top_k:
+            break
+
+    return merged
 
 
 def score_chunk(query: str, chunk: EvidenceChunk) -> int:
@@ -64,4 +97,6 @@ def score_chunk(query: str, chunk: EvidenceChunk) -> int:
 
 def tokenize(text: str) -> set[str]:
     cleaned = "".join(character if character.isalnum() else " " for character in text.casefold())
-    return {token for token in cleaned.split() if len(token) > 1}
+    tokens = {token for token in cleaned.split() if len(token) > 1}
+    singulars = {token[:-1] for token in tokens if token.endswith("s") and len(token) > 3}
+    return tokens | singulars

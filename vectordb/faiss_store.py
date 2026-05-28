@@ -27,3 +27,13 @@ class FaissStore:
             if index >= 0
         ]
 
+    def save(self, path: str) -> None:
+        faiss.write_index(self.index, path)
+
+    @classmethod
+    def load(cls, path: str) -> "FaissStore":
+        index = faiss.read_index(path)
+        store = cls(index.d)
+        store.index = index
+        return store
+

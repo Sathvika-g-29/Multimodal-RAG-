@@ -105,6 +105,16 @@ python -m scripts.parse_dataset --pdf C:\Users\SATHVIKA\Downloads\Placement_RAG_
 This parser avoids embedding evaluation/adversarial questions and creates structured records for eligibility rows,
 hiring distribution, trend data, conflicting records, overall statistics, and interview experiences.
 
+## Build Semantic Index
+
+After `corpus.jsonl` exists, build the FAISS index:
+
+```bash
+python -m scripts.build_index
+```
+
+This creates generated files under `data/extracted/` and retrieval will use semantic search when those files are present.
+
 ## Engineering Notes
 
 - The assistant should cite retrieved chunks instead of answering from memory.
