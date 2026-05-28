@@ -20,6 +20,16 @@ def answer_with_rules(query: str, corpus: list[EvidenceChunk]) -> RuleAnswer | N
         )
 
     company = _find_company(normalized, corpus)
+    companies = _find_companies(normalized, corpus)
+
+    if "which is better" in normalized or "should i join" in normalized:
+        return _answer_subjective_comparison(companies, corpus)
+
+    if "compare" in normalized and len(companies) >= 2 and "all dimensions" in normalized:
+        return _answer_full_company_comparison(companies[:2], corpus)
+
+    if "compare" in normalized and len(companies) >= 2 and "eligibility" in normalized:
+        return _answer_eligibility_comparison(companies[:2], corpus)
 
     if company and ("conflict" in normalized or "or" in normalized and "cgpa" in normalized):
         return _answer_conflict(company, corpus)
@@ -29,6 +39,25 @@ def answer_with_rules(query: str, corpus: list[EvidenceChunk]) -> RuleAnswer | N
 
     if company and "cgpa" in normalized and ("cutoff" in normalized or "requirement" in normalized):
         return _answer_company_cgpa(company, corpus)
+
+    if company and "backlog" in normalized:
+        return _answer_company_backlogs(company, corpus)
+
+    if company and "bond" in normalized:
+        return _answer_company_bond(company, corpus)
+
+    if company and (
+        "technology" in normalized
+        or "language" in normalized
+        or "technical focus" in normalized
+    ):
+        return _answer_company_tech_focus(company, corpus)
+
+    if company and "round" in normalized:
+        return _answer_company_interview_rounds(company, corpus)
+
+    if company and ("topics" in normalized or "prepare" in normalized):
+        return _answer_company_preparation(company, corpus)
 
     if company and "package" in normalized:
         return _answer_company_package(company, corpus)
@@ -84,30 +113,40 @@ def _eligibility_chunks(corpus: list[EvidenceChunk]) -> list[EvidenceChunk]:
 
 
 def _find_company(query: str, corpus: list[EvidenceChunk]) -> str | None:
+    companies = _find_companies(query, corpus)
+    return companies[0] if companies else None
+
+
+def _find_companies(query: str, corpus: list[EvidenceChunk]) -> list[str]:
     companies = {
         str(chunk.metadata["company"])
         for chunk in corpus
         if chunk.metadata.get("company")
     }
-    for company in sorted(companies, key=len, reverse=True):
-        if company.casefold() in query:
-            return company
-    return None
+    return [
+        company
+        for company in sorted(companies, key=len, reverse=True)
+        if company.casefold() in query
+    ]
 
 
 def _answer_company_cgpa(company: str, corpus: list[EvidenceChunk]) -> RuleAnswer | None:
-    conflicts = _company_conflict_chunks(company, corpus)
-    if conflicts:
-        return _answer_conflict(company, corpus)
-
     chunk = _company_section_chunk(company, "eligibility", corpus)
     if not chunk:
         return None
 
     cgpa = chunk.metadata["min_cgpa"]
+    conflicts = _company_conflict_chunks(company, corpus)
+    note = ""
+    evidence = [chunk]
+    if conflicts:
+        portal = next((item for item in conflicts if item.metadata.get("source_authority") == "portal"), None)
+        if portal:
+            note = f" A portal record lists {portal.metadata['cgpa']}, so verify with the placement cell."
+            evidence.extend(conflicts)
     return RuleAnswer(
-        text=f"{company} requires a minimum CGPA of {cgpa}.",
-        evidence=[chunk],
+        text=f"{company} officially requires a minimum CGPA of {cgpa}.{note}",
+        evidence=evidence,
     )
 
 
@@ -120,6 +159,73 @@ def _answer_company_package(company: str, corpus: list[EvidenceChunk]) -> RuleAn
         text=f"{company} offers {chunk.metadata['package_lpa']} LPA in the official eligibility table.",
         evidence=[chunk],
     )
+
+
+def _answer_company_backlogs(company: str, corpus: list[EvidenceChunk]) -> RuleAnswer | None:
+    chunk = _company_section_chunk(company, "eligibility", corpus)
+    if not chunk:
+        return None
+    backlogs = int(chunk.metadata["max_backlogs"])
+    text = (
+        f"{company} allows up to {backlogs} backlog(s)."
+        if backlogs
+        else f"{company} does not allow active backlogs."
+    )
+    return RuleAnswer(text=text, evidence=[chunk])
+
+
+def _answer_company_bond(company: str, corpus: list[EvidenceChunk]) -> RuleAnswer | None:
+    chunk = _company_section_chunk(company, "eligibility", corpus)
+    if not chunk:
+        return None
+    years = int(chunk.metadata["bond_years"])
+    text = f"{company} has a bond period of {years} year(s)."
+    return RuleAnswer(text=text, evidence=[chunk])
+
+
+def _answer_company_tech_focus(company: str, corpus: list[EvidenceChunk]) -> RuleAnswer | None:
+    chunk = _company_section_chunk(company, "eligibility", corpus)
+    if not chunk:
+        return None
+    return RuleAnswer(
+        text=f"{company}'s technical focus is {chunk.metadata['tech_focus']}.",
+        evidence=[chunk],
+    )
+
+
+def _answer_company_interview_rounds(company: str, corpus: list[EvidenceChunk]) -> RuleAnswer:
+    chunks = _company_interview_chunks(company, corpus)
+    round_chunks = [chunk for chunk in chunks if chunk.text.casefold().startswith("round")]
+    if not round_chunks:
+        return RuleAnswer(
+            text=f"I found interview notes for {company}, but no explicit round breakdown.",
+            evidence=chunks[:3],
+        )
+    summary = " ".join(chunk.text for chunk in round_chunks)
+    return RuleAnswer(text=f"{company} interview rounds: {summary}", evidence=round_chunks)
+
+
+def _answer_company_preparation(company: str, corpus: list[EvidenceChunk]) -> RuleAnswer:
+    eligibility = _company_section_chunk(company, "eligibility", corpus)
+    interview_chunks = _company_interview_chunks(company, corpus)
+    tip_chunks = [chunk for chunk in interview_chunks if "tip:" in chunk.text.casefold()]
+    evidence = ([eligibility] if eligibility else []) + tip_chunks[:2]
+    topics = _eligibility_topics(eligibility) if eligibility else "the listed interview topics"
+    focus = eligibility.metadata["tech_focus"] if eligibility else "the company focus area"
+    tips = " ".join(chunk.text for chunk in tip_chunks[:2])
+    text = f"For {company}, prepare {topics}. Technical focus: {focus}."
+    if tips:
+        text = f"{text} {tips}"
+    return RuleAnswer(text=text, evidence=evidence)
+
+
+def _eligibility_topics(chunk: EvidenceChunk | None) -> str:
+    if not chunk:
+        return "the listed interview topics"
+    if chunk.metadata.get("key_topics"):
+        return str(chunk.metadata["key_topics"])
+    match = re.search(r"key topics (.*?), technical focus", chunk.text, flags=re.IGNORECASE)
+    return match.group(1) if match else "the listed interview topics"
 
 
 def _answer_conflict(company: str, corpus: list[EvidenceChunk]) -> RuleAnswer | None:
@@ -166,6 +272,74 @@ def _company_section_chunk(company: str, section: str, corpus: list[EvidenceChun
             if chunk.metadata.get("section") == section and chunk.metadata.get("company") == company
         ),
         None,
+    )
+
+
+def _company_interview_chunks(company: str, corpus: list[EvidenceChunk]) -> list[EvidenceChunk]:
+    return [
+        chunk
+        for chunk in corpus
+        if chunk.metadata.get("section") == "interview"
+        and chunk.metadata.get("company") == company
+    ]
+
+
+def _answer_eligibility_comparison(companies: list[str], corpus: list[EvidenceChunk]) -> RuleAnswer:
+    chunks = [
+        chunk
+        for company in companies
+        for chunk in [_company_section_chunk(company, "eligibility", corpus)]
+        if chunk
+    ]
+    details = "; ".join(
+        (
+            f"{chunk.metadata['company']}: CGPA {chunk.metadata['min_cgpa']}, "
+            f"backlogs {chunk.metadata['max_backlogs']}, package {chunk.metadata['package_lpa']} LPA, "
+            f"bond {chunk.metadata['bond_years']} years, focus {chunk.metadata['tech_focus']}"
+        )
+        for chunk in chunks
+    )
+    return RuleAnswer(text=f"Eligibility comparison: {details}.", evidence=chunks)
+
+
+def _answer_full_company_comparison(companies: list[str], corpus: list[EvidenceChunk]) -> RuleAnswer:
+    evidence: list[EvidenceChunk] = []
+    parts: list[str] = []
+    for company in companies:
+        eligibility = _company_section_chunk(company, "eligibility", corpus)
+        hiring = _company_section_chunk(company, "hiring_distribution", corpus)
+        trend = _company_section_chunk(company, "trend", corpus)
+        company_evidence = [chunk for chunk in [eligibility, hiring, trend] if chunk]
+        evidence.extend(company_evidence)
+        if eligibility and hiring and trend:
+            parts.append(
+                (
+                    f"{company}: CGPA {eligibility.metadata['min_cgpa']}, "
+                    f"backlogs {eligibility.metadata['max_backlogs']}, package {eligibility.metadata['package_lpa']} LPA, "
+                    f"bond {eligibility.metadata['bond_years']} years, focus {eligibility.metadata['tech_focus']}, "
+                    f"SDE {hiring.metadata['sde_roles']}, Analyst {hiring.metadata['analyst_roles']}, "
+                    f"Intern {hiring.metadata['intern_roles']}, 2021-2024 growth {trend.metadata['increase_2021_2024']} LPA"
+                )
+            )
+    return RuleAnswer(text="; ".join(parts) + ".", evidence=evidence)
+
+
+def _answer_subjective_comparison(companies: list[str], corpus: list[EvidenceChunk]) -> RuleAnswer:
+    if len(companies) < 2:
+        return RuleAnswer(
+            text=(
+                "This depends on the student's goals. The dataset supports objective comparison by package, "
+                "eligibility, hiring distribution, bond, and interview focus."
+            ),
+            evidence=[],
+        )
+    comparison = _answer_full_company_comparison(companies[:2], corpus)
+    return RuleAnswer(
+        text=(
+            "There is no universally better company; it depends on your profile and priorities. "
+            f"Objective comparison from the dataset: {comparison.text}"
+        ),
+        evidence=comparison.evidence,
     )
 
 

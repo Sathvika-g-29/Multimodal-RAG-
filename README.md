@@ -127,6 +127,8 @@ python -m scripts.evaluate
 
 The command writes `data/extracted/evaluation_report.json` with answers, evidence sections, and a lightweight response classification.
 
+For a quick judging walkthrough, see `docs/demo_checklist.md`.
+
 ## Engineering Notes
 
 - The assistant should cite retrieved chunks instead of answering from memory.

@@ -75,3 +75,30 @@ def test_rule_engine_answers_generic_conflict_query(tmp_path) -> None:
     assert answer is not None
     assert "Amazon" in answer.text
     assert "Microsoft" in answer.text
+
+
+def test_rule_engine_answers_direct_bond_without_conflict_noise(tmp_path) -> None:
+    answer = answer_with_rules("What is the bond period for Amazon?", sample_corpus(tmp_path))
+
+    assert answer is not None
+    assert "2 year" in answer.text
+    assert "conflicting" not in answer.text.casefold()
+
+
+def test_rule_engine_answers_direct_backlog_query(tmp_path) -> None:
+    answer = answer_with_rules("Does Microsoft allow backlogs?", sample_corpus(tmp_path))
+
+    assert answer is not None
+    assert "1 backlog" in answer.text
+
+
+def test_rule_engine_compares_all_dimensions(tmp_path) -> None:
+    answer = answer_with_rules(
+        "Compare Google and Amazon on all dimensions: eligibility, package, hiring, trend.",
+        sample_corpus(tmp_path),
+    )
+
+    assert answer is not None
+    assert "Google" in answer.text
+    assert "Amazon" in answer.text
+    assert "growth" in answer.text
