@@ -14,13 +14,7 @@ def answer_with_rules(query: str, corpus: list[EvidenceChunk]) -> RuleAnswer | N
     normalized = query.casefold()
 
     if _needs_external_current_info(normalized):
-        return RuleAnswer(
-            text=(
-                "This information is not available in the placement corpus. "
-                "A live external lookup/tool call is required, so I should not answer it from RAG evidence."
-            ),
-            evidence=[],
-        )
+        return _answer_with_web_tool(query)
 
     if _is_out_of_scope(normalized):
         return RuleAnswer(
@@ -690,3 +684,26 @@ def _needs_external_current_info(query: str) -> bool:
         "live",
     ]
     return any(term in query for term in current_info_terms)
+
+
+def _answer_with_web_tool(query: str) -> RuleAnswer:
+    from tools.web_lookup_tool import web_lookup
+
+    result = web_lookup(query)
+    if result.answer:
+        source = f" Source: {result.source_url}" if result.source_url else ""
+        return RuleAnswer(
+            text=(
+                "This information was not available in the placement corpus, so I used the web lookup tool. "
+                f"{result.answer}{source}"
+            ),
+            evidence=[],
+        )
+
+    return RuleAnswer(
+        text=(
+            "This information is not available in the placement corpus, and the web lookup tool could not "
+            f"verify it right now ({result.status}). I should not guess."
+        ),
+        evidence=[],
+    )

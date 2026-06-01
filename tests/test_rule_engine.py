@@ -104,12 +104,24 @@ def test_rule_engine_compares_all_dimensions(tmp_path) -> None:
     assert "growth" in answer.text
 
 
-def test_rule_engine_routes_ceo_question_to_external_lookup(tmp_path) -> None:
+def test_rule_engine_routes_ceo_question_to_web_tool(tmp_path, monkeypatch) -> None:
+    def fake_lookup(query):
+        from tools.web_lookup_tool import WebLookupResult
+
+        return WebLookupResult(
+            query=query,
+            answer="K. Krithivasan is the CEO of TCS.",
+            source_url="https://example.com/tcs",
+            status="ok",
+        )
+
+    monkeypatch.setattr("tools.web_lookup_tool.web_lookup", fake_lookup)
+
     answer = answer_with_rules("Who is the CEO of TCS?", sample_corpus(tmp_path))
 
     assert answer is not None
-    assert "not available in the placement corpus" in answer.text
-    assert "external lookup" in answer.text
+    assert "web lookup tool" in answer.text
+    assert "K. Krithivasan" in answer.text
 
 
 def test_rule_engine_asks_for_student_id_when_eligibility_profile_missing(tmp_path) -> None:
