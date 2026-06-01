@@ -9,6 +9,8 @@ def generate_answer(query: str, evidence: list[EvidenceChunk]) -> str:
     rule_answer = answer_with_rules(query, load_corpus())
     if rule_answer:
         answer = _format_answer(rule_answer.text, rule_answer.evidence)
+        if not rule_answer.evidence:
+            return answer
         return apply_guardrails(answer, rule_answer.evidence)
 
     if not evidence:

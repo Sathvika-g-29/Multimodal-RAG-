@@ -13,6 +13,15 @@ class RuleAnswer:
 def answer_with_rules(query: str, corpus: list[EvidenceChunk]) -> RuleAnswer | None:
     normalized = query.casefold()
 
+    if _needs_external_current_info(normalized):
+        return RuleAnswer(
+            text=(
+                "This information is not available in the placement corpus. "
+                "A live external lookup/tool call is required, so I should not answer it from RAG evidence."
+            ),
+            evidence=[],
+        )
+
     if _is_out_of_scope(normalized):
         return RuleAnswer(
             text="I do not have enough information in the provided placement dataset to answer that.",
@@ -36,6 +45,9 @@ def answer_with_rules(query: str, corpus: list[EvidenceChunk]) -> RuleAnswer | N
 
     if "conflicting" in normalized and "cgpa" in normalized:
         return _answer_conflicting_companies(corpus)
+
+    if company and _is_direct_eligibility_query(normalized):
+        return _answer_student_eligibility(normalized, company, corpus)
 
     if company and "cgpa" in normalized and ("cutoff" in normalized or "requirement" in normalized):
         return _answer_company_cgpa(company, corpus)
@@ -159,6 +171,84 @@ def _answer_company_package(company: str, corpus: list[EvidenceChunk]) -> RuleAn
         text=f"{company} offers {chunk.metadata['package_lpa']} LPA in the official eligibility table.",
         evidence=[chunk],
     )
+
+
+def _answer_student_eligibility(
+    query: str,
+    company: str,
+    corpus: list[EvidenceChunk],
+) -> RuleAnswer:
+    profile = None
+    student_id = _parse_student_id(query)
+    if student_id:
+        from tools.student_profile_tool import fetch_student_profile
+
+        profile = fetch_student_profile(student_id)
+        if not profile:
+            return RuleAnswer(
+                text=(
+                    f"I could not find student profile {student_id} in the student database. "
+                    "Please verify the roll number or connect the MySQL student-profile tool."
+                ),
+                evidence=[],
+            )
+    else:
+        parsed = _parse_student_profile(query)
+        if parsed:
+            cgpa, backlogs = parsed
+        else:
+            return RuleAnswer(
+                text=(
+                    "To check your eligibility, I need your student ID/roll number so I can fetch "
+                    "your CGPA and backlog details from the student database."
+                ),
+                evidence=[],
+            )
+
+    chunk = _company_section_chunk(company, "eligibility", corpus)
+    if not chunk:
+        return RuleAnswer(
+            text=f"I could not find eligibility criteria for {company} in the placement corpus.",
+            evidence=[],
+        )
+
+    if profile:
+        cgpa = profile.cgpa
+        backlogs = profile.backlogs
+        student_note = f"student {profile.student_id}"
+    else:
+        student_note = "the provided profile"
+
+    required_cgpa = float(chunk.metadata["min_cgpa"])
+    allowed_backlogs = int(chunk.metadata["max_backlogs"])
+    cgpa_ok = cgpa >= required_cgpa
+    backlog_ok = backlogs <= allowed_backlogs
+
+    if cgpa_ok and backlog_ok:
+        text = (
+            f"Yes, {student_note} is eligible for {company}. CGPA {cgpa:g} meets the "
+            f"required {required_cgpa:g}, and {backlogs} backlog(s) are within the allowed "
+            f"limit of {allowed_backlogs}."
+        )
+    else:
+        reasons = []
+        if not cgpa_ok:
+            reasons.append(f"CGPA {cgpa:g} is below the required {required_cgpa:g}")
+        if not backlog_ok:
+            reasons.append(f"{backlogs} backlog(s) exceed the allowed limit of {allowed_backlogs}")
+        text = f"No, {student_note} is not eligible for {company}: {'; '.join(reasons)}."
+
+    return RuleAnswer(text=text, evidence=[chunk])
+
+
+def _is_direct_eligibility_query(query: str) -> bool:
+    terms = ["am i eligible", "eligible for", "can i apply", "apply to", "apply for"]
+    return any(term in query for term in terms)
+
+
+def _parse_student_id(query: str) -> str | None:
+    match = re.search(r"(?:roll(?: number)?|student(?: id)?|id)\s*(?:is|:)?\s*([a-z0-9]{6,})", query, re.I)
+    return match.group(1).upper() if match else None
 
 
 def _answer_company_backlogs(company: str, corpus: list[EvidenceChunk]) -> RuleAnswer | None:
@@ -588,3 +678,15 @@ def _is_out_of_scope(query: str) -> bool:
         "pays the most in the world",
     ]
     return any(term in query for term in out_of_scope_terms)
+
+
+def _needs_external_current_info(query: str) -> bool:
+    current_info_terms = [
+        "who is the ceo",
+        "current ceo",
+        "latest ceo",
+        "current stock price",
+        "today",
+        "live",
+    ]
+    return any(term in query for term in current_info_terms)

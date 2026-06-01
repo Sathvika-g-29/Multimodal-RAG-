@@ -102,3 +102,28 @@ def test_rule_engine_compares_all_dimensions(tmp_path) -> None:
     assert "Google" in answer.text
     assert "Amazon" in answer.text
     assert "growth" in answer.text
+
+
+def test_rule_engine_routes_ceo_question_to_external_lookup(tmp_path) -> None:
+    answer = answer_with_rules("Who is the CEO of TCS?", sample_corpus(tmp_path))
+
+    assert answer is not None
+    assert "not available in the placement corpus" in answer.text
+    assert "external lookup" in answer.text
+
+
+def test_rule_engine_asks_for_student_id_when_eligibility_profile_missing(tmp_path) -> None:
+    answer = answer_with_rules("Am I eligible for TCS?", sample_corpus(tmp_path))
+
+    assert answer is not None
+    assert "student ID" in answer.text
+
+
+def test_rule_engine_uses_student_profile_tool_for_eligibility(tmp_path) -> None:
+    answer = answer_with_rules(
+        "Am I eligible for TCS? my roll number is 22B01A0001",
+        sample_corpus(tmp_path),
+    )
+
+    assert answer is not None
+    assert "not eligible for TCS" in answer.text
