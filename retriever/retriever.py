@@ -19,6 +19,7 @@ class EvidenceChunk:
 
 def retrieve_context(request: RetrievalRequest) -> list[EvidenceChunk]:
     from retriever.corpus_loader import load_corpus
+    from retriever.chroma_retriever import retrieve_chroma_context
     from retriever.semantic_retriever import retrieve_semantic_context
 
     corpus = load_corpus()
@@ -37,6 +38,10 @@ def retrieve_context(request: RetrievalRequest) -> list[EvidenceChunk]:
         if metadata_matches(chunk.metadata, request.metadata)
     ]
     keyword_results = retrieve_keyword_context(request, filtered)
+    chroma_results = retrieve_chroma_context(request)
+    if chroma_results:
+        return merge_results(chroma_results, keyword_results, request.top_k)
+
     semantic_results = retrieve_semantic_context(request)
     if semantic_results:
         return merge_results(semantic_results, keyword_results, request.top_k)

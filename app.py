@@ -6,6 +6,7 @@ import streamlit as st
 from evaluation.test_queries import OFFICIAL_EVALUATION_QUERIES
 from llm.generator import generate_answer
 from retriever.corpus_loader import load_corpus
+from retriever.chroma_retriever import chroma_index_exists
 from retriever.retriever import EvidenceChunk, RetrievalRequest, retrieve_context
 from retriever.semantic_retriever import semantic_index_exists
 
@@ -38,6 +39,7 @@ def main() -> None:
     with st.sidebar:
         st.header("System status")
         st.metric("Corpus records", len(corpus))
+        st.metric("Chroma index", "Ready" if chroma_index_exists() else "Not built")
         st.metric("Semantic index", "Ready" if semantic_index_exists() else "Not built")
 
         if corpus:

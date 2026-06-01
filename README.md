@@ -117,6 +117,14 @@ python -m scripts.build_index
 
 This creates generated files under `data/extracted/` and retrieval will use semantic search when those files are present.
 
+For larger datasets, build the persistent Chroma index:
+
+```bash
+python -m scripts.build_chroma_index
+```
+
+Retrieval uses Chroma first when available, then FAISS, then keyword search. This is the preferred path for scaling beyond the small demo corpus.
+
 ## Evaluate
 
 Run the official 30-query evaluation set from the dataset:
