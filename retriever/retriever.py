@@ -40,11 +40,11 @@ def retrieve_context(request: RetrievalRequest) -> list[EvidenceChunk]:
     keyword_results = retrieve_keyword_context(request, filtered)
     chroma_results = retrieve_chroma_context(request)
     if chroma_results:
-        return merge_results(chroma_results, keyword_results, request.top_k)
+        return merge_results(keyword_results, chroma_results, request.top_k)
 
     semantic_results = retrieve_semantic_context(request)
     if semantic_results:
-        return merge_results(semantic_results, keyword_results, request.top_k)
+        return merge_results(keyword_results, semantic_results, request.top_k)
 
     return keyword_results
 

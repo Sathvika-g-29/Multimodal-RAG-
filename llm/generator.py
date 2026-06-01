@@ -2,12 +2,14 @@ from retriever.retriever import EvidenceChunk
 
 
 def generate_answer(query: str, evidence: list[EvidenceChunk]) -> str:
+    from reasoning.guardrails import apply_guardrails
     from reasoning.rule_engine import answer_with_rules
     from retriever.corpus_loader import load_corpus
 
     rule_answer = answer_with_rules(query, load_corpus())
     if rule_answer:
-        return _format_answer(rule_answer.text, rule_answer.evidence)
+        answer = _format_answer(rule_answer.text, rule_answer.evidence)
+        return apply_guardrails(answer, rule_answer.evidence)
 
     if not evidence:
         return "I do not have enough retrieved evidence to answer that reliably."
@@ -19,18 +21,20 @@ def generate_answer(query: str, evidence: list[EvidenceChunk]) -> str:
     )
 
     if conflict_chunks:
-        return (
+        answer = (
             "I found conflicting placement records, so this should be verified with the official placement cell.\n\n"
             f"Query: {query}\n\n"
             "Retrieved evidence:\n"
             f"{evidence_text}"
         )
+        return apply_guardrails(answer, evidence)
 
-    return (
+    answer = (
         f"Query: {query}\n\n"
         "Retrieved evidence:\n"
         f"{evidence_text}"
     )
+    return apply_guardrails(answer, evidence)
 
 
 def _format_answer(answer: str, evidence: list[EvidenceChunk]) -> str:

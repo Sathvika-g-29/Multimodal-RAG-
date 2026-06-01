@@ -153,5 +153,8 @@ For a quick judging walkthrough, see `docs/demo_checklist.md`.
 - Conflicting evidence is surfaced instead of silently merged.
 - Eligibility queries should use metadata filters before generation.
 - Unsupported live-data queries should be routed to tools or refused clearly.
+- A lightweight hallucination guard applies a 2x2 evidence-support matrix,
+  refutation checks, look-back ratio scoring, self-consistency review, and
+  exact-match-first retrieval to reduce semantic overshadowing.
 - Evaluation queries live in `evaluation/test_queries.py` and should be expanded
   whenever a new data modality is added.
