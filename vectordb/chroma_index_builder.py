@@ -9,6 +9,7 @@ def build_chroma_index(
     corpus_path: str | Path = "data/extracted/corpus.jsonl",
     persist_path: str = DEFAULT_CHROMA_PATH,
     collection_name: str = DEFAULT_COLLECTION,
+    reset: bool = True,
 ) -> int:
     corpus = load_corpus(corpus_path)
     if not corpus:
@@ -20,5 +21,5 @@ def build_chroma_index(
         embeddings=embeddings,
         persist_path=persist_path,
         collection_name=collection_name,
+        reset=reset,
     )
-

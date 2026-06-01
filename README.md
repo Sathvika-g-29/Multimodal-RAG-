@@ -125,6 +125,16 @@ python -m scripts.build_chroma_index
 
 Retrieval uses Chroma first when available, then FAISS, then keyword search. This is the preferred path for scaling beyond the small demo corpus.
 
+## Batch Ingestion
+
+For larger folders of files:
+
+```bash
+python -m scripts.ingest_batch data/pdfs data/tables data/images --update-chroma
+```
+
+The batch path hashes files for duplicate detection, chunks arbitrary PDFs by structure, deduplicates repeated text, and updates the persistent Chroma store.
+
 ## Evaluate
 
 Run the official 30-query evaluation set from the dataset:

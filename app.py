@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 
 import pandas as pd
 import streamlit as st
@@ -9,6 +10,8 @@ from retriever.corpus_loader import load_corpus
 from retriever.chroma_retriever import chroma_index_exists
 from retriever.retriever import EvidenceChunk, RetrievalRequest, retrieve_context
 from retriever.semantic_retriever import semantic_index_exists
+from ingestion.batch_ingestion import ingest_files_incrementally
+from ingestion.pipeline import append_jsonl
 
 
 st.set_page_config(
@@ -46,6 +49,19 @@ def main() -> None:
             sections = sorted({str(chunk.metadata.get("section", "unknown")) for chunk in corpus})
             st.caption("Indexed sections")
             st.write(", ".join(sections))
+
+        st.header("Document upload")
+        uploaded_files = st.file_uploader(
+            "Upload PDFs, images, CSV, or Excel files",
+            type=["pdf", "png", "jpg", "jpeg", "webp", "csv", "xlsx", "xls"],
+            accept_multiple_files=True,
+        )
+        if uploaded_files and st.button("Ingest uploaded files", use_container_width=True):
+            with st.spinner("Processing uploaded files..."):
+                saved_paths = save_uploaded_files(uploaded_files)
+                documents, skipped = ingest_files_incrementally(saved_paths)
+                append_jsonl(documents, CORPUS_PATH)
+            st.success(f"Ingested {len(documents)} records. Skipped {len(skipped)} duplicate file(s).")
 
         st.header("Retrieval controls")
         companies = sorted(
@@ -173,6 +189,27 @@ def render_evidence(evidence: list[EvidenceChunk]) -> None:
             for chunk in evidence
         ]
         st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+
+
+def save_uploaded_files(uploaded_files) -> list[Path]:
+    saved_paths: list[Path] = []
+    for uploaded_file in uploaded_files:
+        target_dir = upload_target_dir(uploaded_file.name)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target_path = target_dir / uploaded_file.name
+        with target_path.open("wb") as file:
+            shutil.copyfileobj(uploaded_file, file)
+        saved_paths.append(target_path)
+    return saved_paths
+
+
+def upload_target_dir(filename: str) -> Path:
+    suffix = Path(filename).suffix.casefold()
+    if suffix == ".pdf":
+        return DATA_DIR / "pdfs"
+    if suffix in {".csv", ".xlsx", ".xls"}:
+        return DATA_DIR / "tables"
+    return DATA_DIR / "images"
 
 
 if __name__ == "__main__":

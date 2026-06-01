@@ -1,4 +1,5 @@
 from pathlib import Path
+from hashlib import sha1
 
 from retriever.retriever import EvidenceChunk
 
@@ -42,13 +43,17 @@ def add_chunks_to_chroma(
     embeddings: list[list[float]],
     persist_path: str = DEFAULT_CHROMA_PATH,
     collection_name: str = DEFAULT_COLLECTION,
+    reset: bool = True,
 ) -> int:
     if len(chunks) != len(embeddings):
         raise ValueError("chunks and embeddings must have the same length")
 
-    collection = reset_collection(persist_path, collection_name)
-    ids = [f"{index}-{abs(hash(chunk.text))}" for index, chunk in enumerate(chunks)]
-    collection.add(
+    collection = reset_collection(persist_path, collection_name) if reset else get_collection(persist_path, collection_name)
+    ids = [
+        sha1(f"{chunk.source}|{chunk.text}".encode("utf-8")).hexdigest()
+        for chunk in chunks
+    ]
+    collection.upsert(
         ids=ids,
         documents=[chunk.text for chunk in chunks],
         embeddings=embeddings,

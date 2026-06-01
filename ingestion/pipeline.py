@@ -4,6 +4,7 @@ from pathlib import Path
 
 from ingestion.document import SourceDocument
 from preprocessing.cleaner import normalize_text
+from preprocessing.pdf_chunker import chunk_pdf_text_by_structure
 
 
 PDF_EXTENSIONS = {".pdf"}
@@ -35,8 +36,8 @@ def documents_from_pdf(pdf_path: str | Path) -> list[SourceDocument]:
     documents: list[SourceDocument] = []
 
     for page in extract_pdf_text(path):
-        text = normalize_text(page.text)
-        if text:
+        page_text = normalize_text(page.text)
+        for text in chunk_pdf_text_by_structure(page_text):
             metadata = infer_metadata(path) | {"page": page.page_number, "modality": "text"}
             documents.append(SourceDocument.create(text, str(path), "pdf_text", metadata))
 
@@ -121,6 +122,19 @@ def write_jsonl(documents: Iterable[SourceDocument], output_path: str | Path) ->
 
     count = 0
     with path.open("w", encoding="utf-8") as file:
+        for document in documents:
+            file.write(json.dumps(document.to_dict(), ensure_ascii=False) + "\n")
+            count += 1
+
+    return count
+
+
+def append_jsonl(documents: Iterable[SourceDocument], output_path: str | Path) -> int:
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    count = 0
+    with path.open("a", encoding="utf-8") as file:
         for document in documents:
             file.write(json.dumps(document.to_dict(), ensure_ascii=False) + "\n")
             count += 1
