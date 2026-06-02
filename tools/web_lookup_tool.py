@@ -179,10 +179,71 @@ def _wikidata_property_lookup(
     property_label: str,
     timeout_seconds: int,
 ) -> WebLookupResult:
-    entity_id = _wikidata_search_entity(entity_query, timeout_seconds)
-    if not entity_id:
+    entity_ids = _wikidata_search_entities(entity_query, property_id, timeout_seconds)
+    if not entity_ids:
         return WebLookupResult(query=original_query, answer=None, source_url=None, status="no_wikidata_entity")
 
+    for entity_id in entity_ids:
+        value_ids = _wikidata_claim_value_ids(entity_id, property_id, timeout_seconds)
+        if not value_ids:
+            continue
+
+        labels = _wikidata_labels(value_ids, timeout_seconds)
+        if not labels:
+            continue
+
+        answer = f"The {property_label} of {entity_query} is {', '.join(labels)}."
+        return WebLookupResult(
+            query=original_query,
+            answer=answer,
+            source_url=f"https://www.wikidata.org/wiki/{entity_id}",
+            status="ok",
+        )
+
+    return WebLookupResult(query=original_query, answer=None, source_url=None, status="no_wikidata_claim")
+
+
+def _wikidata_search_entities(query: str, property_id: str, timeout_seconds: int) -> list[str]:
+    aliases = {
+        "tcs": "Tata Consultancy Services",
+    }
+    base_query = aliases.get(query.casefold().strip(), query)
+    search_queries = [base_query]
+    if property_id == "P169":
+        search_queries.extend([f"{base_query} company", f"{base_query} corporation", f"{base_query} inc"])
+
+    entity_ids: list[str] = []
+    seen: set[str] = set()
+    for search_query in search_queries:
+        for entity_id in _wikidata_search_entity_ids(search_query, timeout_seconds):
+            if entity_id not in seen:
+                seen.add(entity_id)
+                entity_ids.append(entity_id)
+    return entity_ids
+
+
+def _wikidata_search_entity_ids(query: str, timeout_seconds: int) -> list[str]:
+    try:
+        response = requests.get(
+            WIKIDATA_API_URL,
+            params={
+                "action": "wbsearchentities",
+                "search": query,
+                "language": "en",
+                "format": "json",
+                "limit": 5,
+            },
+            timeout=timeout_seconds,
+        )
+        response.raise_for_status()
+    except requests.RequestException:
+        return []
+
+    results = response.json().get("search", [])
+    return [result["id"] for result in results if result.get("id")]
+
+
+def _wikidata_claim_value_ids(entity_id: str, property_id: str, timeout_seconds: int) -> list[str]:
     try:
         claims_response = requests.get(
             WIKIDATA_API_URL,
@@ -195,56 +256,18 @@ def _wikidata_property_lookup(
             timeout=timeout_seconds,
         )
         claims_response.raise_for_status()
-    except requests.RequestException as exc:
-        return WebLookupResult(query=original_query, answer=None, source_url=None, status=f"wikidata_failed: {exc}")
+    except requests.RequestException:
+        return []
 
     claims = claims_response.json().get("claims", {}).get(property_id, [])
-    value_ids = [
-        claim.get("mainsnak", {}).get("datavalue", {}).get("value", {}).get("id")
-        for claim in claims
-    ]
-    value_ids = [value_id for value_id in value_ids if value_id]
-    if not value_ids:
-        return WebLookupResult(query=original_query, answer=None, source_url=None, status="no_wikidata_claim")
-
-    labels = _wikidata_labels(value_ids, timeout_seconds)
-    if not labels:
-        return WebLookupResult(query=original_query, answer=None, source_url=None, status="no_wikidata_label")
-
-    answer = f"The {property_label} of {entity_query} is {', '.join(labels)}."
-    return WebLookupResult(
-        query=original_query,
-        answer=answer,
-        source_url=f"https://www.wikidata.org/wiki/{entity_id}",
-        status="ok",
-    )
-
-
-def _wikidata_search_entity(query: str, timeout_seconds: int) -> str | None:
-    aliases = {
-        "tcs": "Tata Consultancy Services",
-    }
-    search_query = aliases.get(query.casefold().strip(), query)
-    try:
-        response = requests.get(
-            WIKIDATA_API_URL,
-            params={
-                "action": "wbsearchentities",
-                "search": search_query,
-                "language": "en",
-                "format": "json",
-                "limit": 1,
-            },
-            timeout=timeout_seconds,
+    return [
+        value_id
+        for value_id in (
+            claim.get("mainsnak", {}).get("datavalue", {}).get("value", {}).get("id")
+            for claim in claims
         )
-        response.raise_for_status()
-    except requests.RequestException:
-        return None
-
-    results = response.json().get("search", [])
-    if not results:
-        return None
-    return results[0].get("id")
+        if value_id
+    ]
 
 
 def _wikidata_labels(entity_ids: list[str], timeout_seconds: int) -> list[str]:

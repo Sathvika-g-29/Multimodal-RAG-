@@ -2,6 +2,7 @@ from tools.web_lookup_tool import (
     WebLookupResult,
     _parse_capital_target,
     _parse_ceo_target,
+    _wikidata_search_entities,
     verified_fallback_lookup,
     web_lookup,
 )
@@ -84,3 +85,21 @@ def test_verified_fallback_lookup_handles_tcs_ceo() -> None:
     assert result is not None
     assert "K. Krithivasan" in result.answer
     assert result.status == "ok"
+
+
+def test_wikidata_search_entities_expands_company_queries(monkeypatch) -> None:
+    calls = []
+
+    def fake_search(query, timeout_seconds):
+        calls.append(query)
+        return [query]
+
+    monkeypatch.setattr("tools.web_lookup_tool._wikidata_search_entity_ids", fake_search)
+
+    results = _wikidata_search_entities("Amazon", "P169", 8)
+
+    assert "Amazon" in calls
+    assert "Amazon company" in calls
+    assert "Amazon corporation" in calls
+    assert "Amazon inc" in calls
+    assert results
