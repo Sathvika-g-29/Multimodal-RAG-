@@ -22,6 +22,9 @@ def retrieve_context(request: RetrievalRequest) -> list[EvidenceChunk]:
     from retriever.chroma_retriever import retrieve_chroma_context
     from retriever.semantic_retriever import retrieve_semantic_context
 
+    if should_skip_corpus_retrieval(request.query):
+        return []
+
     corpus = load_corpus()
     if not corpus:
         return [
@@ -105,3 +108,17 @@ def tokenize(text: str) -> set[str]:
     tokens = {token for token in cleaned.split() if len(token) > 1}
     singulars = {token[:-1] for token in tokens if token.endswith("s") and len(token) > 3}
     return tokens | singulars
+
+
+def should_skip_corpus_retrieval(query: str) -> bool:
+    normalized = query.casefold()
+    current_or_external_terms = [
+        "who is the ceo",
+        "current ceo",
+        "latest ceo",
+        "current stock price",
+        "stock price",
+        "today",
+        "live",
+    ]
+    return any(term in normalized for term in current_or_external_terms)
