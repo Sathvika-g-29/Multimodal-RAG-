@@ -124,6 +124,26 @@ def test_rule_engine_routes_ceo_question_to_web_tool(tmp_path, monkeypatch) -> N
     assert "K. Krithivasan" in answer.text
 
 
+def test_rule_engine_routes_short_ceo_question_to_web_tool(tmp_path, monkeypatch) -> None:
+    def fake_lookup(query):
+        from tools.web_lookup_tool import WebLookupResult
+
+        return WebLookupResult(
+            query=query,
+            answer="K. Krithivasan is the CEO of TCS.",
+            source_url="https://example.com/tcs",
+            status="ok",
+        )
+
+    monkeypatch.setattr("tools.web_lookup_tool.web_lookup", fake_lookup)
+
+    answer = answer_with_rules("CEO of TCS?", sample_corpus(tmp_path))
+
+    assert answer is not None
+    assert "web lookup tool" in answer.text
+    assert "K. Krithivasan" in answer.text
+
+
 def test_rule_engine_asks_for_student_id_when_eligibility_profile_missing(tmp_path) -> None:
     answer = answer_with_rules("Am I eligible for TCS?", sample_corpus(tmp_path))
 

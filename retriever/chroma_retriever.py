@@ -1,6 +1,5 @@
 from pathlib import Path
 
-from embeddings.embedder import embed_texts
 from retriever.retriever import EvidenceChunk, RetrievalRequest
 from vectordb.chroma_store import DEFAULT_CHROMA_PATH, DEFAULT_COLLECTION, query_chroma
 
@@ -17,6 +16,8 @@ def retrieve_chroma_context(
     if not chroma_index_exists(persist_path):
         return []
 
+    from embeddings.embedder import embed_texts
+
     query_embedding = embed_texts([request.query])[0]
     return query_chroma(
         query_embedding=query_embedding,
@@ -25,4 +26,3 @@ def retrieve_chroma_context(
         persist_path=persist_path,
         collection_name=collection_name,
     )
-

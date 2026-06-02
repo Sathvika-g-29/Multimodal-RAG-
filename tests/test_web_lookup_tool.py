@@ -1,4 +1,4 @@
-from tools.web_lookup_tool import WebLookupResult, web_lookup
+from tools.web_lookup_tool import WebLookupResult, _parse_capital_target, _parse_ceo_target, web_lookup
 
 
 class FakeResponse:
@@ -13,6 +13,15 @@ class FakeResponse:
 
 
 def test_web_lookup_uses_abstract_text(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "tools.web_lookup_tool.wikidata_lookup",
+        lambda query, timeout_seconds=8: WebLookupResult(query, None, None, "no_wikidata_route"),
+    )
+    monkeypatch.setattr(
+        "tools.web_lookup_tool.wikipedia_lookup",
+        lambda query, timeout_seconds=8: WebLookupResult(query, None, None, "no_wikipedia_result"),
+    )
+
     def fake_get(*args, **kwargs):
         return FakeResponse(
             {
@@ -34,6 +43,15 @@ def test_web_lookup_uses_abstract_text(monkeypatch) -> None:
 
 
 def test_web_lookup_handles_empty_result(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "tools.web_lookup_tool.wikidata_lookup",
+        lambda query, timeout_seconds=8: WebLookupResult(query, None, None, "no_wikidata_route"),
+    )
+    monkeypatch.setattr(
+        "tools.web_lookup_tool.wikipedia_lookup",
+        lambda query, timeout_seconds=8: WebLookupResult(query, None, None, "no_wikipedia_result"),
+    )
+
     def fake_get(*args, **kwargs):
         return FakeResponse({})
 
@@ -43,3 +61,12 @@ def test_web_lookup_handles_empty_result(monkeypatch) -> None:
 
     assert result.answer is None
     assert result.status == "no_verified_web_answer"
+
+
+def test_parse_ceo_target() -> None:
+    assert _parse_ceo_target("CEO of TCS?") == "TCS"
+    assert _parse_ceo_target("Who is the CEO of TCS?") == "TCS"
+
+
+def test_parse_capital_target() -> None:
+    assert _parse_capital_target("capital of France") == "France"

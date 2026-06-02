@@ -3,6 +3,7 @@ from retriever.retriever import RetrievalRequest, retrieve_context, should_skip_
 
 def test_current_info_queries_skip_corpus_retrieval() -> None:
     assert should_skip_corpus_retrieval("Who is the CEO of TCS?")
+    assert should_skip_corpus_retrieval("CEO of TCS?")
 
 
 def test_retrieve_context_skips_current_info_query() -> None:

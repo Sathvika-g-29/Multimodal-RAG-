@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-from embeddings.embedder import embed_texts
 from retriever.metadata_filter import metadata_matches
 from retriever.retriever import EvidenceChunk, RetrievalRequest
 from vectordb.faiss_store import FaissStore
@@ -28,6 +27,9 @@ def retrieve_semantic_context(
 
     manifest_records = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
     store = FaissStore.load(str(index_path))
+
+    from embeddings.embedder import embed_texts
+
     query_vector = embed_texts([request.query])[0]
 
     results = store.search(query_vector, max(request.top_k * 4, request.top_k))
@@ -45,4 +47,3 @@ def retrieve_semantic_context(
             break
 
     return chunks
-

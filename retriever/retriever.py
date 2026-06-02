@@ -113,6 +113,7 @@ def tokenize(text: str) -> set[str]:
 def should_skip_corpus_retrieval(query: str) -> bool:
     normalized = query.casefold()
     current_or_external_terms = [
+        "ceo of",
         "who is the ceo",
         "current ceo",
         "latest ceo",

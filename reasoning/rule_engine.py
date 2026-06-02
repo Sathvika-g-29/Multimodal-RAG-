@@ -676,6 +676,7 @@ def _is_out_of_scope(query: str) -> bool:
 
 def _needs_external_current_info(query: str) -> bool:
     current_info_terms = [
+        "ceo of",
         "who is the ceo",
         "current ceo",
         "latest ceo",
