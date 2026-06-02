@@ -1,4 +1,10 @@
-from tools.web_lookup_tool import WebLookupResult, _parse_capital_target, _parse_ceo_target, web_lookup
+from tools.web_lookup_tool import (
+    WebLookupResult,
+    _parse_capital_target,
+    _parse_ceo_target,
+    verified_fallback_lookup,
+    web_lookup,
+)
 
 
 class FakeResponse:
@@ -70,3 +76,11 @@ def test_parse_ceo_target() -> None:
 
 def test_parse_capital_target() -> None:
     assert _parse_capital_target("capital of France") == "France"
+
+
+def test_verified_fallback_lookup_handles_tcs_ceo() -> None:
+    result = verified_fallback_lookup("ceo of tcs?")
+
+    assert result is not None
+    assert "K. Krithivasan" in result.answer
+    assert result.status == "ok"
