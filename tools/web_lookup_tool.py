@@ -1,11 +1,14 @@
+import os
 from dataclasses import dataclass
 
 import requests
 
 
+TAVILY_API_URL = "https://api.tavily.com/search"
+BRAVE_API_URL = "https://api.search.brave.com/res/v1/web/search"
+SERPAPI_URL = "https://serpapi.com/search.json"
 DUCKDUCKGO_API_URL = "https://api.duckduckgo.com/"
 WIKIPEDIA_API_URL = "https://en.wikipedia.org/w/api.php"
-WIKIDATA_API_URL = "https://www.wikidata.org/w/api.php"
 
 
 @dataclass(frozen=True)
@@ -14,102 +17,110 @@ class WebLookupResult:
     answer: str | None
     source_url: str | None
     status: str
-
-
-VERIFIED_WEB_FALLBACKS = {
-    "ceo of tcs": WebLookupResult(
-        query="ceo of tcs",
-        answer="K. Krithivasan is the CEO and Managing Director of Tata Consultancy Services.",
-        source_url="https://www.tcs.com/who-we-are/leadership/k-krithivasan",
-        status="ok",
-    ),
-    "who is the ceo of tcs": WebLookupResult(
-        query="who is the ceo of tcs",
-        answer="K. Krithivasan is the CEO and Managing Director of Tata Consultancy Services.",
-        source_url="https://www.tcs.com/who-we-are/leadership/k-krithivasan",
-        status="ok",
-    ),
-    "capital of france": WebLookupResult(
-        query="capital of france",
-        answer="The capital of France is Paris.",
-        source_url="https://www.wikidata.org/wiki/Q142",
-        status="ok",
-    ),
-}
+    provider: str = "none"
 
 
 def web_lookup(query: str, timeout_seconds: int = 8) -> WebLookupResult:
-    fallback_result = verified_fallback_lookup(query)
-    if fallback_result:
-        return fallback_result
+    providers = [
+        tavily_lookup,
+        brave_lookup,
+        serpapi_lookup,
+        wikipedia_lookup,
+        duckduckgo_lookup,
+    ]
 
-    wikidata_result = wikidata_lookup(query, timeout_seconds=timeout_seconds)
-    if wikidata_result.answer:
-        return wikidata_result
+    statuses: list[str] = []
+    for provider in providers:
+        result = provider(query, timeout_seconds=timeout_seconds)
+        if result.answer:
+            return result
+        statuses.append(f"{result.provider}:{result.status}")
 
-    wikipedia_result = wikipedia_lookup(query, timeout_seconds=timeout_seconds)
-    if wikipedia_result.answer:
-        return wikipedia_result
+    return WebLookupResult(
+        query=query,
+        answer=None,
+        source_url=None,
+        status="; ".join(statuses) or "no_provider_answer",
+        provider="web_tool",
+    )
+
+
+def tavily_lookup(query: str, timeout_seconds: int = 8) -> WebLookupResult:
+    api_key = os.getenv("TAVILY_API_KEY")
+    if not api_key:
+        return WebLookupResult(query, None, None, "missing_api_key", "tavily")
 
     try:
-        response = requests.get(
-            DUCKDUCKGO_API_URL,
-            params={
-                "q": query,
-                "format": "json",
-                "no_html": 1,
-                "skip_disambig": 1,
+        response = requests.post(
+            TAVILY_API_URL,
+            json={
+                "api_key": api_key,
+                "query": query,
+                "search_depth": "basic",
+                "include_answer": True,
+                "max_results": 5,
             },
             timeout=timeout_seconds,
         )
         response.raise_for_status()
     except requests.RequestException as exc:
-        return WebLookupResult(
-            query=query,
-            answer=None,
-            source_url=None,
-            status=f"web_lookup_failed: {exc}",
-        )
+        return WebLookupResult(query, None, None, f"request_failed: {exc}", "tavily")
 
     payload = response.json()
-    answer = payload.get("AbstractText") or payload.get("Answer")
-    source_url = payload.get("AbstractURL") or payload.get("AnswerType")
+    answer = payload.get("answer")
+    results = payload.get("results") or []
+    source_url = results[0].get("url") if results else None
+    if not answer and results:
+        answer = _answer_from_results(query, results)
+    return WebLookupResult(query, answer, source_url, "ok" if answer else "no_answer", "tavily")
 
-    if not answer:
-        related_topics = payload.get("RelatedTopics") or []
-        for topic in related_topics:
-            if isinstance(topic, dict) and topic.get("Text"):
-                answer = topic["Text"]
-                source_url = topic.get("FirstURL")
-                break
 
-    if not answer:
-        return WebLookupResult(
-            query=query,
-            answer=None,
-            source_url=None,
-            status="no_verified_web_answer",
+def brave_lookup(query: str, timeout_seconds: int = 8) -> WebLookupResult:
+    api_key = os.getenv("BRAVE_SEARCH_API_KEY")
+    if not api_key:
+        return WebLookupResult(query, None, None, "missing_api_key", "brave")
+
+    try:
+        response = requests.get(
+            BRAVE_API_URL,
+            params={"q": query, "count": 5},
+            headers={"X-Subscription-Token": api_key},
+            timeout=timeout_seconds,
         )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        return WebLookupResult(query, None, None, f"request_failed: {exc}", "brave")
 
-    return WebLookupResult(
-        query=query,
-        answer=answer,
-        source_url=source_url,
-        status="ok",
-    )
+    web_results = response.json().get("web", {}).get("results", [])
+    answer = _answer_from_results(query, web_results)
+    source_url = web_results[0].get("url") if web_results else None
+    return WebLookupResult(query, answer, source_url, "ok" if answer else "no_answer", "brave")
 
 
-def verified_fallback_lookup(query: str) -> WebLookupResult | None:
-    normalized = _normalize_query(query)
-    result = VERIFIED_WEB_FALLBACKS.get(normalized)
-    if not result:
-        return None
-    return WebLookupResult(
-        query=query,
-        answer=result.answer,
-        source_url=result.source_url,
-        status=result.status,
-    )
+def serpapi_lookup(query: str, timeout_seconds: int = 8) -> WebLookupResult:
+    api_key = os.getenv("SERPAPI_API_KEY")
+    if not api_key:
+        return WebLookupResult(query, None, None, "missing_api_key", "serpapi")
+
+    try:
+        response = requests.get(
+            SERPAPI_URL,
+            params={"q": query, "api_key": api_key, "engine": "google"},
+            timeout=timeout_seconds,
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        return WebLookupResult(query, None, None, f"request_failed: {exc}", "serpapi")
+
+    payload = response.json()
+    answer_box = payload.get("answer_box") or {}
+    answer = answer_box.get("answer") or answer_box.get("snippet")
+    source_url = answer_box.get("link")
+    organic_results = payload.get("organic_results") or []
+    if not answer and organic_results:
+        answer = _answer_from_results(query, organic_results)
+        source_url = organic_results[0].get("link")
+    return WebLookupResult(query, answer, source_url, "ok" if answer else "no_answer", "serpapi")
 
 
 def wikipedia_lookup(query: str, timeout_seconds: int = 8) -> WebLookupResult:
@@ -128,7 +139,7 @@ def wikipedia_lookup(query: str, timeout_seconds: int = 8) -> WebLookupResult:
         search_response.raise_for_status()
         search_results = search_response.json().get("query", {}).get("search", [])
         if not search_results:
-            return WebLookupResult(query=query, answer=None, source_url=None, status="no_wikipedia_result")
+            return WebLookupResult(query, None, None, "no_result", "wikipedia")
 
         title = search_results[0]["title"]
         summary_response = requests.get(
@@ -137,182 +148,44 @@ def wikipedia_lookup(query: str, timeout_seconds: int = 8) -> WebLookupResult:
         )
         summary_response.raise_for_status()
     except requests.RequestException as exc:
-        return WebLookupResult(query=query, answer=None, source_url=None, status=f"wikipedia_failed: {exc}")
+        return WebLookupResult(query, None, None, f"request_failed: {exc}", "wikipedia")
 
     payload = summary_response.json()
     answer = payload.get("extract")
     source_url = payload.get("content_urls", {}).get("desktop", {}).get("page")
+    return WebLookupResult(query, answer, source_url, "ok" if answer else "no_summary", "wikipedia")
+
+
+def duckduckgo_lookup(query: str, timeout_seconds: int = 8) -> WebLookupResult:
+    try:
+        response = requests.get(
+            DUCKDUCKGO_API_URL,
+            params={"q": query, "format": "json", "no_html": 1, "skip_disambig": 1},
+            timeout=timeout_seconds,
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        return WebLookupResult(query, None, None, f"request_failed: {exc}", "duckduckgo")
+
+    payload = response.json()
+    answer = payload.get("AbstractText") or payload.get("Answer")
+    source_url = payload.get("AbstractURL")
     if not answer:
-        return WebLookupResult(query=query, answer=None, source_url=None, status="no_wikipedia_summary")
-
-    return WebLookupResult(query=query, answer=answer, source_url=source_url, status="ok")
-
-
-def wikidata_lookup(query: str, timeout_seconds: int = 8) -> WebLookupResult:
-    ceo_target = _parse_ceo_target(query)
-    if ceo_target:
-        return _wikidata_property_lookup(
-            original_query=query,
-            entity_query=ceo_target,
-            property_id="P169",
-            property_label="CEO",
-            timeout_seconds=timeout_seconds,
-        )
-
-    capital_target = _parse_capital_target(query)
-    if capital_target:
-        return _wikidata_property_lookup(
-            original_query=query,
-            entity_query=capital_target,
-            property_id="P36",
-            property_label="capital",
-            timeout_seconds=timeout_seconds,
-        )
-
-    return WebLookupResult(query=query, answer=None, source_url=None, status="no_wikidata_route")
+        for topic in payload.get("RelatedTopics") or []:
+            if isinstance(topic, dict) and topic.get("Text"):
+                answer = topic["Text"]
+                source_url = topic.get("FirstURL")
+                break
+    return WebLookupResult(query, answer, source_url, "ok" if answer else "no_answer", "duckduckgo")
 
 
-def _wikidata_property_lookup(
-    original_query: str,
-    entity_query: str,
-    property_id: str,
-    property_label: str,
-    timeout_seconds: int,
-) -> WebLookupResult:
-    entity_ids = _wikidata_search_entities(entity_query, property_id, timeout_seconds)
-    if not entity_ids:
-        return WebLookupResult(query=original_query, answer=None, source_url=None, status="no_wikidata_entity")
-
-    for entity_id in entity_ids:
-        value_ids = _wikidata_claim_value_ids(entity_id, property_id, timeout_seconds)
-        if not value_ids:
-            continue
-
-        labels = _wikidata_labels(value_ids, timeout_seconds)
-        if not labels:
-            continue
-
-        answer = f"The {property_label} of {entity_query} is {', '.join(labels)}."
-        return WebLookupResult(
-            query=original_query,
-            answer=answer,
-            source_url=f"https://www.wikidata.org/wiki/{entity_id}",
-            status="ok",
-        )
-
-    return WebLookupResult(query=original_query, answer=None, source_url=None, status="no_wikidata_claim")
-
-
-def _wikidata_search_entities(query: str, property_id: str, timeout_seconds: int) -> list[str]:
-    aliases = {
-        "tcs": "Tata Consultancy Services",
-    }
-    base_query = aliases.get(query.casefold().strip(), query)
-    search_queries = [base_query]
-    if property_id == "P169":
-        search_queries.extend([f"{base_query} company", f"{base_query} corporation", f"{base_query} inc"])
-
-    entity_ids: list[str] = []
-    seen: set[str] = set()
-    for search_query in search_queries:
-        for entity_id in _wikidata_search_entity_ids(search_query, timeout_seconds):
-            if entity_id not in seen:
-                seen.add(entity_id)
-                entity_ids.append(entity_id)
-    return entity_ids
-
-
-def _wikidata_search_entity_ids(query: str, timeout_seconds: int) -> list[str]:
-    try:
-        response = requests.get(
-            WIKIDATA_API_URL,
-            params={
-                "action": "wbsearchentities",
-                "search": query,
-                "language": "en",
-                "format": "json",
-                "limit": 5,
-            },
-            timeout=timeout_seconds,
-        )
-        response.raise_for_status()
-    except requests.RequestException:
-        return []
-
-    results = response.json().get("search", [])
-    return [result["id"] for result in results if result.get("id")]
-
-
-def _wikidata_claim_value_ids(entity_id: str, property_id: str, timeout_seconds: int) -> list[str]:
-    try:
-        claims_response = requests.get(
-            WIKIDATA_API_URL,
-            params={
-                "action": "wbgetclaims",
-                "entity": entity_id,
-                "property": property_id,
-                "format": "json",
-            },
-            timeout=timeout_seconds,
-        )
-        claims_response.raise_for_status()
-    except requests.RequestException:
-        return []
-
-    claims = claims_response.json().get("claims", {}).get(property_id, [])
-    return [
-        value_id
-        for value_id in (
-            claim.get("mainsnak", {}).get("datavalue", {}).get("value", {}).get("id")
-            for claim in claims
-        )
-        if value_id
-    ]
-
-
-def _wikidata_labels(entity_ids: list[str], timeout_seconds: int) -> list[str]:
-    try:
-        response = requests.get(
-            WIKIDATA_API_URL,
-            params={
-                "action": "wbgetentities",
-                "ids": "|".join(entity_ids),
-                "props": "labels",
-                "languages": "en",
-                "format": "json",
-            },
-            timeout=timeout_seconds,
-        )
-        response.raise_for_status()
-    except requests.RequestException:
-        return []
-
-    entities = response.json().get("entities", {})
-    labels: list[str] = []
-    for entity_id in entity_ids:
-        label = entities.get(entity_id, {}).get("labels", {}).get("en", {}).get("value")
-        if label:
-            labels.append(label)
-    return labels
-
-
-def _parse_ceo_target(query: str) -> str | None:
-    normalized = query.strip().rstrip("?")
-    lowered = normalized.casefold()
-    for prefix in ["who is the ceo of ", "current ceo of ", "latest ceo of ", "ceo of "]:
-        if lowered.startswith(prefix):
-            return normalized[len(prefix) :].strip()
-    return None
-
-
-def _parse_capital_target(query: str) -> str | None:
-    normalized = query.strip().rstrip("?")
-    lowered = normalized.casefold()
-    for prefix in ["what is the capital of ", "capital of "]:
-        if lowered.startswith(prefix):
-            return normalized[len(prefix) :].strip()
-    return None
-
-
-def _normalize_query(query: str) -> str:
-    return " ".join(query.strip().rstrip("?").casefold().split())
+def _answer_from_results(query: str, results: list[dict]) -> str | None:
+    snippets = []
+    for result in results[:3]:
+        snippet = result.get("snippet") or result.get("description") or result.get("content")
+        title = result.get("title")
+        if snippet:
+            snippets.append(f"{title}: {snippet}" if title else snippet)
+    if not snippets:
+        return None
+    return f"Web results for '{query}': " + " ".join(snippets)

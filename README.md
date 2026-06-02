@@ -147,6 +147,19 @@ The command writes `data/extracted/evaluation_report.json` with answers, evidenc
 
 For a quick judging walkthrough, see `docs/demo_checklist.md`.
 
+## Web Tool
+
+Out-of-corpus/current questions are routed to `tools/web_lookup_tool.py`.
+For reliable web answers, configure at least one real search provider in `.env`:
+
+```bash
+TAVILY_API_KEY=
+BRAVE_SEARCH_API_KEY=
+SERPAPI_API_KEY=
+```
+
+The tool tries Tavily, Brave Search, and SerpAPI before falling back to lightweight no-key sources such as Wikipedia and DuckDuckGo. The no-key fallbacks are useful for demos but are not production-grade search.
+
 ## Engineering Notes
 
 - The assistant should cite retrieved chunks instead of answering from memory.
