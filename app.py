@@ -1,5 +1,6 @@
 from pathlib import Path
 import shutil
+import os
 
 import pandas as pd
 import streamlit as st
@@ -64,6 +65,12 @@ def main() -> None:
             st.success(f"Ingested {len(documents)} records. Skipped {len(skipped)} duplicate file(s).")
 
         st.header("Retrieval controls")
+        guardrails_enabled = st.toggle("Grounding guardrails", value=True)
+        if guardrails_enabled:
+            os.environ.pop("DISABLE_GUARDRAILS", None)
+        else:
+            os.environ["DISABLE_GUARDRAILS"] = "1"
+
         companies = sorted(
             {
                 str(chunk.metadata["company"])

@@ -1,3 +1,5 @@
+import os
+
 from retriever.retriever import EvidenceChunk
 
 
@@ -9,7 +11,7 @@ def generate_answer(query: str, evidence: list[EvidenceChunk]) -> str:
     rule_answer = answer_with_rules(query, load_corpus())
     if rule_answer:
         answer = _format_answer(rule_answer.text, rule_answer.evidence)
-        if not rule_answer.evidence:
+        if not rule_answer.evidence or guardrails_disabled():
             return answer
         return apply_guardrails(answer, rule_answer.evidence)
 
@@ -29,14 +31,14 @@ def generate_answer(query: str, evidence: list[EvidenceChunk]) -> str:
             "Retrieved evidence:\n"
             f"{evidence_text}"
         )
-        return apply_guardrails(answer, evidence)
+        return answer if guardrails_disabled() else apply_guardrails(answer, evidence)
 
     answer = (
         f"Query: {query}\n\n"
         "Retrieved evidence:\n"
         f"{evidence_text}"
     )
-    return apply_guardrails(answer, evidence)
+    return answer if guardrails_disabled() else apply_guardrails(answer, evidence)
 
 
 def _format_answer(answer: str, evidence: list[EvidenceChunk]) -> str:
@@ -48,3 +50,7 @@ def _format_answer(answer: str, evidence: list[EvidenceChunk]) -> str:
         for chunk in evidence[:5]
     )
     return f"{answer}\n\nEvidence:\n{evidence_text}"
+
+
+def guardrails_disabled() -> bool:
+    return os.getenv("DISABLE_GUARDRAILS", "").casefold() in {"1", "true", "yes"}
