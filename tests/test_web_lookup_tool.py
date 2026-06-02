@@ -1,7 +1,6 @@
 from tools.web_lookup_tool import (
     WebLookupResult,
     duckduckgo_html_search,
-    duckduckgo_instant_answer,
     parse_duckduckgo_html,
     web_lookup,
 )
@@ -17,27 +16,6 @@ class FakeResponse:
 
     def json(self):
         return self.payload
-
-
-def test_duckduckgo_instant_answer_uses_api_answer(monkeypatch) -> None:
-    def fake_get(*args, **kwargs):
-        return FakeResponse(
-            {
-                "AbstractText": "Paris is the capital of France.",
-                "AbstractURL": "https://example.com/paris",
-            }
-        )
-
-    monkeypatch.setattr("tools.web_lookup_tool.requests.get", fake_get)
-
-    result = duckduckgo_instant_answer("capital of France")
-
-    assert result == WebLookupResult(
-        query="capital of France",
-        answer="Paris is the capital of France.",
-        source_url="https://example.com/paris",
-        status="instant_ok",
-    )
 
 
 def test_parse_duckduckgo_html_extracts_result() -> None:
@@ -75,11 +53,7 @@ def test_duckduckgo_html_search_returns_snippet(monkeypatch) -> None:
     assert result.status == "html_ok"
 
 
-def test_web_lookup_falls_back_to_html_search(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "tools.web_lookup_tool.duckduckgo_instant_answer",
-        lambda query, timeout_seconds=8: WebLookupResult(query, None, None, "instant_no_answer"),
-    )
+def test_web_lookup_uses_html_search(monkeypatch) -> None:
     monkeypatch.setattr(
         "tools.web_lookup_tool.duckduckgo_html_search",
         lambda query, timeout_seconds=8: WebLookupResult(query, "HTML answer", "https://example.com", "html_ok"),

@@ -6,7 +6,6 @@ from urllib.parse import parse_qs, unquote, urlparse
 import requests
 
 
-DUCKDUCKGO_API_URL = "https://api.duckduckgo.com/"
 DUCKDUCKGO_HTML_URL = "https://html.duckduckgo.com/html/"
 
 
@@ -20,50 +19,7 @@ class WebLookupResult:
 
 
 def web_lookup(query: str, timeout_seconds: int = 8) -> WebLookupResult:
-    instant_result = duckduckgo_instant_answer(query, timeout_seconds=timeout_seconds)
-    if instant_result.answer:
-        return instant_result
-
-    search_result = duckduckgo_html_search(query, timeout_seconds=timeout_seconds)
-    if search_result.answer:
-        return search_result
-
-    return WebLookupResult(
-        query=query,
-        answer=None,
-        source_url=None,
-        status=f"{instant_result.status}; {search_result.status}",
-    )
-
-
-def duckduckgo_instant_answer(query: str, timeout_seconds: int = 8) -> WebLookupResult:
-    try:
-        response = requests.get(
-            DUCKDUCKGO_API_URL,
-            params={"q": query, "format": "json", "no_html": 1, "skip_disambig": 1},
-            headers=_headers(),
-            timeout=timeout_seconds,
-        )
-        response.raise_for_status()
-    except requests.RequestException as exc:
-        return WebLookupResult(query, None, None, f"instant_failed: {exc}")
-
-    payload = response.json()
-    answer = payload.get("AbstractText") or payload.get("Answer")
-    source_url = payload.get("AbstractURL")
-    if not answer:
-        for topic in payload.get("RelatedTopics") or []:
-            if isinstance(topic, dict) and topic.get("Text"):
-                answer = topic["Text"]
-                source_url = topic.get("FirstURL")
-                break
-
-    return WebLookupResult(
-        query=query,
-        answer=answer,
-        source_url=source_url,
-        status="instant_ok" if answer else "instant_no_answer",
-    )
+    return duckduckgo_html_search(query, timeout_seconds=timeout_seconds)
 
 
 def duckduckgo_html_search(query: str, timeout_seconds: int = 8) -> WebLookupResult:

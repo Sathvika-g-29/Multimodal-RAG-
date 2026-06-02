@@ -150,11 +150,7 @@ For a quick judging walkthrough, see `docs/demo_checklist.md`.
 ## Web Tool
 
 Out-of-corpus/current questions are routed to `tools/web_lookup_tool.py`.
-The tool uses DuckDuckGo in two stages:
-
-- Instant Answer API
-- HTML search-result fallback when the instant answer is empty
-
+The tool uses normal DuckDuckGo HTML search and parses result snippets with source links.
 This keeps the demo API-key free while still avoiding answers from the placement corpus for current/out-of-corpus questions.
 
 ## Engineering Notes
