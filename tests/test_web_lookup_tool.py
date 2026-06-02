@@ -35,22 +35,51 @@ def test_parse_duckduckgo_html_extracts_result() -> None:
     ]
 
 
+def test_parse_duckduckgo_html_handles_href_before_class() -> None:
+    page = """
+    <div class="result results_links">
+      <a href="/l/?uddg=https%3A%2F%2Famazon.com%2Fabout" rel="nofollow" class="result__a">Amazon Leadership</a>
+      <span class="result__snippet">Andy Jassy is the CEO of Amazon.</span>
+    </div>
+    """
+
+    results = parse_duckduckgo_html(page)
+
+    assert results[0]["title"] == "Amazon Leadership"
+    assert results[0]["snippet"] == "Andy Jassy is the CEO of Amazon."
+    assert results[0]["url"] == "https://amazon.com/about"
+
+
 def test_duckduckgo_html_search_returns_snippet(monkeypatch) -> None:
-    def fake_post(*args, **kwargs):
+    def fake_get(*args, **kwargs):
         return FakeResponse(
             text="""
+            <div class="result">
             <a rel="nofollow" class="result__a" href="/l/?uddg=https%3A%2F%2Fexample.com">Amazon CEO</a>
-            <a class="result__snippet">Andy Jassy is President and CEO of Amazon.</a>
+            <div class="result__snippet">Andy Jassy is President and CEO of Amazon.</div>
+            </div>
             """
         )
 
-    monkeypatch.setattr("tools.web_lookup_tool.requests.post", fake_post)
+    monkeypatch.setattr("tools.web_lookup_tool.requests.get", fake_get)
 
     result = duckduckgo_html_search("ceo of amazon")
 
     assert "Andy Jassy" in result.answer
     assert result.source_url == "https://example.com"
     assert result.status == "html_ok"
+
+
+def test_duckduckgo_html_search_detects_challenge(monkeypatch) -> None:
+    def fake_get(*args, **kwargs):
+        return FakeResponse(text='<div class="anomaly-modal">unfortunately, bots use duckduckgo too.</div>')
+
+    monkeypatch.setattr("tools.web_lookup_tool.requests.get", fake_get)
+
+    result = duckduckgo_html_search("ceo of amazon")
+
+    assert result.answer is None
+    assert result.status == "duckduckgo_challenge"
 
 
 def test_web_lookup_uses_html_search(monkeypatch) -> None:

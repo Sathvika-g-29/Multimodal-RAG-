@@ -701,6 +701,16 @@ def _answer_with_web_tool(query: str) -> RuleAnswer:
             evidence=[],
         )
 
+    if result.status == "duckduckgo_challenge":
+        return RuleAnswer(
+            text=(
+                "This information is not available in the placement corpus. I tried the DuckDuckGo web lookup "
+                "tool, but DuckDuckGo returned a human-verification challenge, so the app could not safely "
+                "verify an external answer right now."
+            ),
+            evidence=[],
+        )
+
     return RuleAnswer(
         text=(
             "This information is not available in the placement corpus, and the web lookup tool could not "
