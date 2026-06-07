@@ -151,7 +151,16 @@ def test_rule_engine_asks_for_student_id_when_eligibility_profile_missing(tmp_pa
     assert "student ID" in answer.text
 
 
-def test_rule_engine_uses_student_profile_tool_for_eligibility(tmp_path) -> None:
+def test_rule_engine_uses_student_profile_tool_for_eligibility(tmp_path, monkeypatch) -> None:
+    from tools.student_profile_tool import StudentProfile, seed_student_db
+
+    db_path = tmp_path / "students.db"
+    seed_student_db(
+        profiles=[StudentProfile(student_id="22B01A0001", cgpa=7.2, backlogs=0, branch="CSE")],
+        db_path=db_path,
+    )
+    monkeypatch.setenv("STUDENT_DB_PATH", str(db_path))
+
     answer = answer_with_rules(
         "Am I eligible for TCS? my roll number is 22B01A0001",
         sample_corpus(tmp_path),
