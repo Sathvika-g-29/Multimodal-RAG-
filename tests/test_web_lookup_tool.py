@@ -2,6 +2,7 @@ from tools.web_lookup_tool import (
     WebLookupResult,
     duckduckgo_html_search,
     parse_duckduckgo_html,
+    tavily_search,
     web_lookup,
 )
 
@@ -82,7 +83,28 @@ def test_duckduckgo_html_search_detects_challenge(monkeypatch) -> None:
     assert result.status == "duckduckgo_challenge"
 
 
-def test_web_lookup_uses_html_search(monkeypatch) -> None:
+def test_tavily_search_returns_answer(monkeypatch) -> None:
+    def fake_post(*args, **kwargs):
+        return FakeResponse(
+            payload={
+                "answer": "Andy Jassy is the CEO of Amazon.",
+                "results": [{"url": "https://www.aboutamazon.com/about-us/leadership"}],
+            }
+        )
+
+    monkeypatch.setenv("TAVILY_API_KEY", "test-key")
+    monkeypatch.setattr("tools.web_lookup_tool.requests.post", fake_post)
+
+    result = tavily_search("ceo of amazon")
+
+    assert result.answer == "Andy Jassy is the CEO of Amazon."
+    assert result.source_url == "https://www.aboutamazon.com/about-us/leadership"
+    assert result.status == "tavily_ok"
+    assert result.provider == "tavily"
+
+
+def test_web_lookup_falls_back_to_html_search_without_tavily_key(monkeypatch) -> None:
+    monkeypatch.setenv("TAVILY_API_KEY", "")
     monkeypatch.setattr(
         "tools.web_lookup_tool.duckduckgo_html_search",
         lambda query, timeout_seconds=8: WebLookupResult(query, "HTML answer", "https://example.com", "html_ok"),

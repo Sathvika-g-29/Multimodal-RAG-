@@ -1,12 +1,15 @@
 import html
+import os
 import re
 from dataclasses import dataclass
 from urllib.parse import parse_qs, unquote, urlparse
 
 import requests
+from dotenv import load_dotenv
 
 
 DUCKDUCKGO_HTML_URL = "https://html.duckduckgo.com/html/"
+TAVILY_SEARCH_URL = "https://api.tavily.com/search"
 
 
 @dataclass(frozen=True)
@@ -19,7 +22,40 @@ class WebLookupResult:
 
 
 def web_lookup(query: str, timeout_seconds: int = 8) -> WebLookupResult:
+    tavily_result = tavily_search(query, timeout_seconds=timeout_seconds)
+    if tavily_result.status != "tavily_missing_api_key":
+        return tavily_result
     return duckduckgo_html_search(query, timeout_seconds=timeout_seconds)
+
+
+def tavily_search(query: str, timeout_seconds: int = 8) -> WebLookupResult:
+    load_dotenv()
+    api_key = os.getenv("TAVILY_API_KEY", "").strip()
+    if not api_key:
+        return WebLookupResult(query, None, None, "tavily_missing_api_key", provider="tavily")
+
+    payload = {
+        "api_key": api_key,
+        "query": query,
+        "search_depth": "basic",
+        "include_answer": True,
+        "max_results": 3,
+    }
+    try:
+        response = requests.post(TAVILY_SEARCH_URL, json=payload, timeout=timeout_seconds)
+        response.raise_for_status()
+        data = response.json()
+    except requests.RequestException as exc:
+        return WebLookupResult(query, None, None, f"tavily_failed: {exc}", provider="tavily")
+    except ValueError as exc:
+        return WebLookupResult(query, None, None, f"tavily_bad_json: {exc}", provider="tavily")
+
+    answer = _clean_tavily_answer(data)
+    source_url = _first_tavily_source_url(data)
+    if not answer:
+        return WebLookupResult(query, None, source_url, "tavily_no_answer", provider="tavily")
+
+    return WebLookupResult(query, answer, source_url, "tavily_ok", provider="tavily")
 
 
 def duckduckgo_html_search(query: str, timeout_seconds: int = 8) -> WebLookupResult:
@@ -35,11 +71,11 @@ def duckduckgo_html_search(query: str, timeout_seconds: int = 8) -> WebLookupRes
         return WebLookupResult(query, None, None, f"html_failed: {exc}")
 
     if _is_duckduckgo_challenge(response.text):
-        return WebLookupResult(query, None, None, "duckduckgo_challenge")
+        return WebLookupResult(query, None, None, "duckduckgo_challenge", provider="duckduckgo")
 
     results = parse_duckduckgo_html(response.text)
     if not results:
-        return WebLookupResult(query, None, None, "html_no_results")
+        return WebLookupResult(query, None, None, "html_no_results", provider="duckduckgo")
 
     first = results[0]
     snippets = " ".join(result["snippet"] for result in results[:3] if result.get("snippet"))
@@ -49,7 +85,29 @@ def duckduckgo_html_search(query: str, timeout_seconds: int = 8) -> WebLookupRes
         answer=answer if snippets else first["title"],
         source_url=first.get("url"),
         status="html_ok",
+        provider="duckduckgo",
     )
+
+
+def _clean_tavily_answer(data: dict) -> str | None:
+    direct_answer = str(data.get("answer") or "").strip()
+    if direct_answer:
+        return direct_answer
+
+    snippets = []
+    for result in data.get("results", [])[:3]:
+        content = str(result.get("content") or "").strip()
+        if content:
+            snippets.append(content)
+    return " ".join(snippets) if snippets else None
+
+
+def _first_tavily_source_url(data: dict) -> str | None:
+    for result in data.get("results", []):
+        url = str(result.get("url") or "").strip()
+        if url:
+            return url
+    return None
 
 
 def parse_duckduckgo_html(page_html: str) -> list[dict[str, str]]:
